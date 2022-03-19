@@ -17,6 +17,7 @@ local function generateArgStr(short, long)
 	return argstr
 end
 
+-- Set visualizer version requirement.
 ---@param major integer
 ---@param minor integer
 ---@param patch integer
@@ -25,6 +26,15 @@ function nva.version(major, minor, patch)
 	nvi.setVisualizerVersion(major, minor or 0, patch or 0)
 end
 
+---@param major integer
+---@param minor integer
+---@param patch integer
+function nva.compareVersion(major, minor, patch)
+	return nvi.compareVersion(major, minor or 0, patch or 0)
+end
+
+-- Set visualizer author.
+---@param author string
 function nva.author(author)
 	nvi.setAuthor(author)
 end

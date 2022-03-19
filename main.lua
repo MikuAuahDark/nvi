@@ -2,6 +2,16 @@ local love = require("love")
 local nvi = require("nvi")
 local argparse = require("libs.argparse")
 
+---@type love.Canvas
+local mainCanvas
+---@type NVi.BaseVisualizer
+local visualizerObject
+local inRenderMode = false
+local songDuration = 0
+local songTime = 0
+---@type love.Source
+local songSource
+
 local function filterArgs(arg)
 	local r, rcomp = {}, {}
 	local insert = false
@@ -62,6 +72,7 @@ local function listVisualizers()
 end
 
 function love.load(arg)
+	-- Arg parse
 	local parser = argparse("nvi", "NPad Visualizer Framework")
 	local exitNow = false
 	local realArg, filteredArg = filterArgs(arg)
@@ -94,6 +105,7 @@ function love.load(arg)
 		exitNow = true
 	end)
 
+	-- Parse main program args
 	local status, parsedArgs = parser:pparse(realArg)
 	if exitNow then
 		love.event.quit(0)
@@ -103,9 +115,14 @@ function love.load(arg)
 		love.event.quit(1)
 		return
 	end
+	local canvasSize = {1280 * parsedArgs.dimensions, 720 * parsedArgs.dimensions}
+	local renderTarget = parsedArgs.render
+	nvi.setScaling(parsedArgs.dimensions)
 
 	-- Load music
 	nvi.loadSongFile(parsedArgs.songfile)
+	local songData = nvi.getSongData()
+	songDuration = songData.soundData:getSampleCount() / songData.soundData:getSampleRate()
 
 	-- Load visualizer
 	local func = assert(love.filesystem.load("nvi/"..parsedArgs.visualizer.."/init.lua"))
@@ -114,8 +131,7 @@ function love.load(arg)
 	nvi.loadVisualizerArgparse(parsedArgs.visualizer)
 
 	-- Load
-	---@type NVi.BaseVisualizer
-	local visualizerObject = func()
+	visualizerObject = func()
 	local visArgparse = nvi.getArgparse()
 	nvi.loadVisualizerArgparse(nil)
 
@@ -124,6 +140,92 @@ function love.load(arg)
 	if not status then
 		error(parsedArgs)
 	end
+
+	-- Initialize window
+	nvi.createWindow()
+
+	-- Load metadata
+	---@type NVi.Metadata
+	local metadata = {}
+
+	for k, v in pairs(songData.metadata) do
+		metadata[k] = v
+	end
+
+	if songData.cover then
+		metadata.coverArt = love.graphics.newImage(songData.cover)
+	end
+
+	-- Call visualizer loader
+	local visualizerRequirement = visualizerObject.load(parsedArgs, metadata)
+
+	-- Initialize canvas
+	mainCanvas = love.graphics.newCanvas(canvasSize[1], canvasSize[2], {
+		format = "normal",
+		dpiscale = 1,
+		mipmaps = renderTarget and "none" or "auto"
+	})
+
+	-- Load render mode
+	if renderTarget then
+		-- TODO: cycle canvas in render mode
+		nvi.startRender(renderTarget, 60, canvasSize[1], canvasSize[2])
+		inRenderMode = true
+	else
+		songSource = love.audio.newSource(songData.soundData)
+	end
+
+	-- Load visualizer requirement
+	-- TODO
+end
+
+function love.update(dt)
+	local actualSongTime = 0
+
+	-- Play audio
+	if songSource then
+		if not songSource:isPlaying() then
+			if songTime == 1 then
+				love.event.quit()
+				return
+			else
+				songSource:play()
+			end
+		else
+			actualSongTime = songSource:tell("seconds")
+		end
+	else
+		actualSongTime = songTime
+	end
+
+	-- Update Canvas
+	love.graphics.push("all")
+	love.graphics.setCanvas(mainCanvas)
+	love.graphics.clear(0, 0, 0, 1)
+	love.graphics.scale(nvi.getScaling())
+	visualizerObject.draw()
+	love.graphics.pop()
+
+	if inRenderMode then
+		if not nvi.supplyRender(mainCanvas) then
+			nvi.endRender()
+			error("supplyRender failed, console may give more info")
+		end
+	end
+
+	if not songSource then
+		if songTime >= songDuration then
+			love.event.quit()
+			return
+		end
+
+		songTime = songTime + dt
+	end
+end
+
+function love.draw()
+	-- TODO: resize according to window
+	love.graphics.draw(mainCanvas, 0, 0, 0, 1 / nvi.getScaling())
 end
 
 function love.quit()

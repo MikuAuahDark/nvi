@@ -30,10 +30,6 @@ local VER_STRING = formatVersion(VER_MAJOR, VER_MINOR, VER_PATCH)
 
 local nviVersion = {VER_MAJOR, VER_MINOR, VER_PATCH}
 
-local function errorVersion(major, minor, patch)
-	error("visualizer requires NVi "..formatVersion(major, minor, patch).." but current NVi version is "..VER_STRING, 2)
-end
-
 function nvi.saveWindowData()
 	if love.window.isOpen() then
 		local w, h, d = love.window.getMode()
@@ -68,23 +64,31 @@ function nvi.createWindow()
 	})
 end
 
-function nvi.assertVersion(major, minor, patch)
+function nvi.compareVersion(major, minor, patch)
 	if VER_MAJOR < major then
-		errorVersion(major, minor, patch)
+		return -1
 	elseif VER_MAJOR > major then
-		return
+		return 1
 	end
 
 	if VER_MINOR < minor then
-		errorVersion(major, minor, patch)
+		return -1
 	elseif VER_MINOR > minor then
-		return
+		return 1
 	end
 
 	if VER_PATCH < patch then
-		errorVersion(major, minor, patch)
+		return -1
 	elseif VER_PATCH > patch then
-		return
+		return 1
+	end
+
+	return 0
+end
+
+function nvi.assertVersion(major, minor, patch)
+	if nvi.compareVersion(major, minor, patch) < 0 then
+		error("visualizer requires NVi "..formatVersion(major, minor, patch).." but current NVi version is "..VER_STRING, 2)
 	end
 end
 
@@ -168,7 +172,7 @@ function nvi.loadSongFile(path)
 			ffi.copy(image:getFFIPointer(), data.coverArt.data, w * h * 4)
 			ls2x.libav.free(data.coverArt.data)
 
-			songFile.coverArt = cover
+			songFile.cover = image
 		end
 
 		-- Create SoundData
@@ -179,6 +183,22 @@ function nvi.loadSongFile(path)
 		-- Uh oh
 		local f = assert(io.open(path, "rb"))
 		local fd = love.filesystem.newFileData(f:read("*a"), path)
+		local sd = love.sound.newSoundData(fd)
+
+		if sd:getChannelCount() == 1 then
+			local sd2 = love.sound.newSoundData(sd:getSampleCount(), sd:getSampleRate(), sd:getBitDepth(), 2)
+
+			-- Potentially slow
+			for i = 0, sd:getSampleCount() - 1 do
+				local s = sd:getSample(i)
+				sd2:setSample(i, 1, s)
+				sd2:setSample(i, 2, s)
+			end
+
+			sd:release()
+			sd = sd2
+		end
+
 		songFile = {
 			metadata = {},
 			soundData = love.sound.newSoundData(fd)
@@ -190,6 +210,24 @@ end
 
 function nvi.getSongData()
 	return songFile
+end
+
+function nvi.startRender(path, fps, width, height)
+	assert(ls2x.libav, "rendering requires FFmpeg-capable LS2X")
+	assert(ls2x.libav.startEncodingSession(path, width, height, fps), "startEncodingSession failed, console may give more info")
+end
+
+---@param canvas love.Canvas
+---@return boolean
+function nvi.supplyRender(canvas)
+	local image = canvas:newImageData()
+	local result = ls2x.libav.supplyVideoEncoder(image:getFFIPointer())
+	image:release()
+	return result
+end
+
+function nvi.endRender()
+	return ls2x.libav.endEncodingSession()
 end
 
 return nvi
