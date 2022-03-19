@@ -80,6 +80,7 @@ function love.load(arg)
 		print("NPad Visualizer Framework")
 		print()
 		print("Licensed under MIT License")
+		print()
 		exitNow = true
 	end)
 	parser:flag("-l --list", "List all available visualizers."):action(function()
@@ -101,6 +102,27 @@ function love.load(arg)
 		io.stderr:write("Error: ", parsedArgs, "\n")
 		love.event.quit(1)
 		return
+	end
+
+	-- Load music
+	nvi.loadSongFile(parsedArgs.songfile)
+
+	-- Load visualizer
+	local func = assert(love.filesystem.load("nvi/"..parsedArgs.visualizer.."/init.lua"))
+
+	-- Setup file-level context
+	nvi.loadVisualizerArgparse(parsedArgs.visualizer)
+
+	-- Load
+	---@type NVi.BaseVisualizer
+	local visualizerObject = func()
+	local visArgparse = nvi.getArgparse()
+	nvi.loadVisualizerArgparse(nil)
+
+	-- Parse additional args
+	status, parsedArgs = visArgparse:pparse(filteredArg)
+	if not status then
+		error(parsedArgs)
 	end
 end
 

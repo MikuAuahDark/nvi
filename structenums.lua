@@ -1,4 +1,4 @@
----@class NVi.Metadata
+---@class NVi.Metadata: table<string,any>
 ---@field public title string
 ---@field public artist string
 ---@field public album string

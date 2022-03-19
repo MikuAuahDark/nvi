@@ -17,11 +17,16 @@ local function generateArgStr(short, long)
 	return argstr
 end
 
+---@param major integer
+---@param minor integer
+---@param patch integer
 function nva.version(major, minor, patch)
 	nvi.assertVersion(major, minor or 0, patch or 0)
+	nvi.setVisualizerVersion(major, minor or 0, patch or 0)
 end
 
 function nva.author(author)
+	nvi.setAuthor(author)
 end
 
 function nva.registerCommandLineOption(short, long, description, default)
